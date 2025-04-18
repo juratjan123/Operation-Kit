@@ -25,7 +25,7 @@
 - **包管理器**: npm (前端), Cargo (Rust)
 
 ## 注意事项
-使用的时候请将Your_Slat替换为自己的Salt
+使用的时候请将Your_Slat替换为自己的Salt（还有oss.rs的Bucket_name等信息）
 ```
 baibaoxiang/baibaoxiang-go/main.go
 &

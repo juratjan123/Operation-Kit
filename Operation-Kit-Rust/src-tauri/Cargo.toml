@@ -1,6 +1,6 @@
 [package]
 name = "baibaoxiang-rust"
-version = "0.1.0"
+version = "0.2.0"
 description = "运营百宝箱"
 authors = ["July_Tea"]
 license = ""
@@ -19,9 +19,15 @@ serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-hashids = { git = "https://github.com/charsyam/hashids_rust" }
 base64 = "0.21"
 rand = "0.8"
+harsh = "0.2.2"
+hmac = "0.12.1"
+sha1 = "0.10.6"
+hex = "0.4.3"
+reqwest = { version = "0.12.15", features = ["json"] }
+md5 = "0.7.0"
+chrono = "0.4.40"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

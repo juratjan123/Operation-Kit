@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import type { AppState } from './types';
 import { createTextState, updateTextState, goToPage } from './utils/text';
 import * as api from './utils/api';
@@ -15,10 +15,26 @@ import {
   lightTheme,
   useOsTheme,
   createDiscreteApi,
+  NModal,
+  NRadio,
+  NRadioGroup,
 } from 'naive-ui';
 
 const osTheme = useOsTheme();
 const isDark = ref(osTheme.value === 'dark');
+
+// 配置相关状态
+const showSettingsModal = ref(false);
+const currentConfig = ref('通用');
+const selectedConfig = ref('通用');
+const useHuaweiPrefix = ref(true);
+const selectedUseHuaweiPrefix = ref(true);
+
+// OSS配置
+const accessId = ref('');
+const accessKey = ref('');
+const selectedAccessId = ref('');
+const selectedAccessKey = ref('');
 
 // 防抖控制
 const messageDebounce = {
@@ -61,6 +77,95 @@ const state = reactive<AppState>({
   input: createTextState(),
   output: createTextState(),
 });
+
+// 在组件挂载时加载配置
+onMounted(async () => {
+  try {
+    // 从localStorage中读取上次的配置
+    const savedConfig = localStorage.getItem('cryptoConfig');
+    
+    // 如果存在保存的配置，则使用它
+    if (savedConfig) {
+      selectedConfig.value = savedConfig;
+      await setConfiguration(savedConfig);
+    }
+    
+    // 从后端获取配置
+    const config = await api.getCryptoConfig();
+    currentConfig.value = config;
+    
+    // 获取华为前缀配置
+    const prefixConfig = await api.getHuaweiPrefixConfig();
+    useHuaweiPrefix.value = prefixConfig;
+    selectedUseHuaweiPrefix.value = prefixConfig;
+    
+    // 读取OSS配置信息
+    const savedAccessId = localStorage.getItem('ossAccessId');
+    const savedAccessKey = localStorage.getItem('ossAccessKey');
+    
+    if (savedAccessId) {
+      accessId.value = savedAccessId;
+      selectedAccessId.value = savedAccessId;
+    }
+    
+    if (savedAccessKey) {
+      accessKey.value = savedAccessKey;
+      selectedAccessKey.value = savedAccessKey;
+    }
+  } catch (err) {
+    messageDebounce.show('error', 'config', '加载配置失败');
+  }
+});
+
+// 设置配置
+async function setConfiguration(config: string) {
+  try {
+    await api.setCryptoConfig(config);
+    currentConfig.value = config;
+    // 保存到localStorage中
+    localStorage.setItem('cryptoConfig', config);
+    messageDebounce.show('success', 'config', `已设置为${config}模式`);
+  } catch (err) {
+    messageDebounce.show('error', 'config', '设置配置失败');
+  }
+}
+
+// 设置华为前缀配置
+async function setHuaweiPrefixConfiguration(usePrefix: boolean) {
+  try {
+    await api.setHuaweiPrefixConfig(usePrefix);
+    useHuaweiPrefix.value = usePrefix;
+  } catch (err) {
+    messageDebounce.show('error', 'config', '设置华为前缀配置失败');
+  }
+}
+
+// 打开设置对话框
+function openSettings() {
+  selectedConfig.value = currentConfig.value;
+  selectedUseHuaweiPrefix.value = useHuaweiPrefix.value;
+  selectedAccessId.value = accessId.value;
+  selectedAccessKey.value = accessKey.value;
+  showSettingsModal.value = true;
+}
+
+// 保存设置
+async function saveSettings() {
+  await setConfiguration(selectedConfig.value);
+  
+  // 如果是华为模式，则设置华为前缀配置
+  if (selectedConfig.value === '华为') {
+    await setHuaweiPrefixConfiguration(selectedUseHuaweiPrefix.value);
+  }
+  
+  // 保存OSS配置
+  accessId.value = selectedAccessId.value;
+  accessKey.value = selectedAccessKey.value;
+  localStorage.setItem('ossAccessId', accessId.value);
+  localStorage.setItem('ossAccessKey', accessKey.value);
+  
+  showSettingsModal.value = false;
+}
 
 // 输入框处理
 async function handleInputChange(value: string) {
@@ -163,6 +268,29 @@ async function handleCopy() {
   }
 }
 
+// 上传到OSS
+async function uploadToOSS(channel: string) {
+  try {
+    // 检查OSS配置
+    if (!accessId.value || !accessKey.value) {
+      messageDebounce.show('error', 'oss-upload', '请先在设置中配置OSS的Access ID和Access Key');
+      return;
+    }
+    
+    // 上传内容
+    const result = await api.uploadToOSS(
+      accessId.value,
+      accessKey.value,
+      state.output.fullContent,
+      channel
+    );
+    
+    messageDebounce.show('success', 'oss-upload', result);
+  } catch (err: any) {
+    messageDebounce.show('error', 'oss-upload', `上传失败: ${err.toString()}`);
+  }
+}
+
 function clearText(target: 'input' | 'output') {
   updateTextState(target === 'input' ? state.input : state.output, '');
   messageDebounce.show('success', `clear-${target}`, `已清空${target === 'input' ? '输入' : '输出'}内容`);
@@ -172,6 +300,12 @@ function clearText(target: 'input' | 'output') {
 <template>
   <n-config-provider :theme="isDark ? darkTheme : lightTheme">
     <div class="app-container" :class="{ 'dark': isDark }">
+      <div class="config-indicator">当前配置：{{ currentConfig }}</div>
+      
+      <div class="settings-icon" @click="openSettings">
+        <img src="/Settings.svg" alt="设置" />
+      </div>
+      
       <div class="content">
         <div class="section">
           <h2>输入内容</h2>
@@ -230,6 +364,14 @@ function clearText(target: 'input' | 'output') {
             <n-button class="action-button" @click="() => handleRemoveQuotes('output')">去除引号</n-button>
             <n-button class="action-button" @click="handleCopy">一键复制</n-button>
           </div>
+          
+          <!-- OSS上传按钮 -->
+          <div class="button-group oss-upload-buttons">
+            <n-button class="oss-button" @click="() => uploadToOSS('vivo')">上传至vivo表</n-button>
+            <n-button class="oss-button" @click="() => uploadToOSS('oppo')">上传至oppo表</n-button>
+            <n-button class="oss-button" @click="() => uploadToOSS('huawei')">上传至huawei表</n-button>
+            <n-button class="oss-button" @click="() => uploadToOSS('xiaomi')">上传至xiaomi表</n-button>
+          </div>
         </div>
 
         <div class="button-group center">
@@ -237,6 +379,51 @@ function clearText(target: 'input' | 'output') {
           <n-button class="clear-button" @click="() => clearText('output')">清空输出</n-button>
         </div>
       </div>
+      
+      <!-- 设置对话框 -->
+      <n-modal
+        v-model:show="showSettingsModal"
+        preset="dialog"
+        title="应用配置"
+        positive-text="确认"
+        negative-text="取消"
+        @positive-click="saveSettings"
+        @negative-click="() => { showSettingsModal = false }"
+      >
+        <div class="settings-content">
+          <div class="settings-row">
+            <span class="settings-label">加密配置：</span>
+            <n-radio-group v-model:value="selectedConfig">
+              <n-radio value="通用">通用</n-radio>
+              <n-radio value="华为">华为</n-radio>
+            </n-radio-group>
+          </div>
+          
+          <!-- 华为模式特有选项 -->
+          <div class="settings-row" v-if="selectedConfig === '华为'">
+            <span class="settings-label">是否在加密输出中带上"haot"：</span>
+            <n-radio-group v-model:value="selectedUseHuaweiPrefix">
+              <n-radio :value="true">是</n-radio>
+              <n-radio :value="false">否</n-radio>
+            </n-radio-group>
+          </div>
+          
+          <!-- OSS配置 -->
+          <div class="settings-section">
+            <h3 class="settings-section-title">OSS配置</h3>
+            
+            <div class="settings-row">
+              <span class="settings-label">Access ID：</span>
+              <n-input v-model:value="selectedAccessId" placeholder="请输入Access ID" />
+            </div>
+            
+            <div class="settings-row">
+              <span class="settings-label">Access Key：</span>
+              <n-input v-model:value="selectedAccessKey" placeholder="请输入Access Key" />
+            </div>
+          </div>
+        </div>
+      </n-modal>
     </div>
   </n-config-provider>
 </template>
@@ -377,6 +564,15 @@ h2 {
   min-width: 100px;
 }
 
+.oss-upload-buttons {
+  margin-top: 8px;
+}
+
+.oss-button {
+  flex: 1;
+  min-width: 120px;
+}
+
 :deep(.n-button) {
   border-radius: 4px;
   height: 32px;
@@ -463,5 +659,70 @@ h2 {
   color: var(--text-color-dark);
   background-color: var(--button-bg-dark);
   border-color: var(--border-color-dark);
+}
+
+.config-indicator {
+  position: absolute;
+  top: 1px;
+  right: 5px;
+  font-size: 12px;
+  opacity: 0.6;
+  z-index: 10;
+}
+
+.settings-icon {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.settings-icon:hover {
+  opacity: 1;
+}
+
+.settings-icon img {
+  width: 100%;
+  height: 100%;
+}
+
+.settings-content {
+  padding: 10px 0;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.settings-label {
+  margin-right: 10px;
+  min-width: 120px;
+}
+
+.settings-content p {
+  margin: 0 0 10px 0;
+}
+
+.settings-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--border-color-light);
+  padding-top: 15px;
+}
+
+.dark .settings-section {
+  border-color: var(--border-color-dark);
+}
+
+.settings-section-title {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 500;
 }
 </style>

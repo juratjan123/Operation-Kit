@@ -1,7 +1,7 @@
 {
   "name": "baibaoxiang-rust",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "@tauri-apps/api": "^1.5.0",
     "@vueuse/core": "^10.11.1",
     "naive-ui": "^2.40.4",
+    "tauri-plugin-store-api": "^0.0.0",
     "vue": "^3.3.4"
   },
   "devDependencies": {
